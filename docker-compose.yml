@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: pedido_mesa_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: attech
+      POSTGRES_PASSWORD: attech
+      POSTGRES_DB: pedido_mesa
+    # 5432/5434 já estão em uso por outros projetos nesta máquina.
+    ports:
+      - "5435:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U attech -d pedido_mesa"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

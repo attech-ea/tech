@@ -1,0 +1,15 @@
+node_modules/
+.next/
+out/
+*.log
+*.tsbuildinfo
+next-env.d.ts
+
+/lib/generated/prisma
+.env
+
+.vercel
+.env*
+
+# Dados pessoais (RG/CPF) usados só no seed local
+/scripts/usuarios-data.json

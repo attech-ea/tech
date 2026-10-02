@@ -1,0 +1,156 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TipoDeslocamento {
+  COMUM
+  TECNICO
+}
+
+model Colaborador {
+  id             Int             @id @default(autoincrement())
+  nome           String
+  // Cargo como consta na lista de colaboradores ("Soldador Irata N1"); as
+  // `funcoes` (tabela PRIO) são derivadas dele e dos treinamentos.
+  cargo          String?
+  // Cargo no documento da empresa (ex.: "CEO").
+  cargoDocumento String?         @map("cargo_documento")
+  email          String?
+  // Datas "YYYY-MM-DD".
+  dataCadastro   String?         @map("data_cadastro")
+  dataNascimento String?         @map("data_nascimento")
+  rg             String?
+  cpf            String?
+  treinamentos   String[]        @default([])
+  funcoes        Funcao[]
+  itens          RelatorioItem[]
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@map("colaboradores")
+}
+
+model Funcao {
+  id               Int              @id @default(autoincrement())
+  nome             String           @unique
+  // Função normal: preço por hora. Função Irata: valor fixo da diária de 12h.
+  preco            Decimal          @db.Decimal(10, 2)
+  // Funções Irata (N1, N2, N3) usam a regra de 12h fixas do cálculo de horas.
+  irata            Boolean          @default(false)
+  tipoDeslocamento TipoDeslocamento @default(COMUM) @map("tipo_deslocamento")
+  colaboradores    Colaborador[]
+  itens            RelatorioItem[]
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  @@map("funcoes")
+}
+
+// Os valores usados no cálculo (preços, nomes, tipo) são copiados para o
+// relatório, para que editar um cadastro depois não altere relatórios antigos.
+model Relatorio {
+  id                 Int             @id @default(autoincrement())
+  descricao          String?
+  // Data do primeiro dia de trabalho, "YYYY-MM-DD" (para listar e ordenar);
+  // data e horário de cada dia ficam em `dias`.
+  data               String
+  dias               RelatorioDia[]
+  kmQuantidade      Decimal         @map("km_quantidade") @db.Decimal(10, 2)
+  kmPreco            Decimal         @map("km_preco") @db.Decimal(10, 2)
+  deslocamentoHoras  Decimal         @map("deslocamento_horas") @db.Decimal(10, 2)
+  deslocPrecoComum   Decimal         @map("desloc_preco_comum") @db.Decimal(10, 2)
+  deslocPrecoTecnico Decimal         @map("desloc_preco_tecnico") @db.Decimal(10, 2)
+  precoAlmoco        Decimal         @map("preco_almoco") @db.Decimal(10, 2)
+  precoJantar        Decimal         @map("preco_jantar") @db.Decimal(10, 2)
+  // Valor da alimentação informado à mão (ex.: nota fiscal); nulo usa o das refeições marcadas.
+  alimentacaoManual  Decimal?        @map("alimentacao_manual") @db.Decimal(10, 2)
+  // Valor do material do serviço; 0 quando não há material.
+  material           Decimal         @default(0) @db.Decimal(10, 2)
+  total             Decimal         @db.Decimal(12, 2)
+  itens              RelatorioItem[]
+  deslocamentos      RelatorioDeslocamento[]
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  @@map("relatorios")
+}
+
+// Um dia de trabalho do relatório. Datas "YYYY-MM-DD" e horários "HH:MM", no mesmo
+// formato do cálculo de horas; `dataSaida` vira o dia seguinte quando o turno
+// cruza a meia-noite.
+model RelatorioDia {
+  id             Int       @id @default(autoincrement())
+  ordem          Int
+  relatorio      Relatorio @relation(fields: [relatorioId], references: [id], onDelete: Cascade)
+  relatorioId    Int       @map("relatorio_id")
+  data           String
+  dataSaida      String    @map("data_saida")
+  entrada        String
+  saida          String
+  ignorarFeriado Boolean   @default(false) @map("ignorar_feriado")
+
+  @@index([relatorioId])
+  @@map("relatorio_dias")
+}
+
+// Uma viagem da equipe (ida, volta ou outra), com data e horário, no mesmo formato
+// de `RelatorioDia`. Horas normais e 100% saem da data e do horário.
+model RelatorioDeslocamento {
+  id             Int       @id @default(autoincrement())
+  ordem          Int
+  relatorio      Relatorio @relation(fields: [relatorioId], references: [id], onDelete: Cascade)
+  relatorioId    Int       @map("relatorio_id")
+  rotulo         String
+  data           String
+  dataSaida      String    @map("data_saida")
+  entrada        String
+  saida          String
+  ignorarFeriado Boolean   @default(false) @map("ignorar_feriado")
+
+  @@index([relatorioId])
+  @@map("relatorio_deslocamentos")
+}
+
+model RelatorioItem {
+  id               Int              @id @default(autoincrement())
+  ordem            Int
+  relatorio        Relatorio        @relation(fields: [relatorioId], references: [id], onDelete: Cascade)
+  relatorioId      Int              @map("relatorio_id")
+  colaborador      Colaborador?     @relation(fields: [colaboradorId], references: [id], onDelete: SetNull)
+  colaboradorId    Int?             @map("colaborador_id")
+  funcao           Funcao?          @relation(fields: [funcaoId], references: [id], onDelete: SetNull)
+  funcaoId         Int?             @map("funcao_id")
+  colaboradorNome  String           @map("colaborador_nome")
+  funcaoNome       String           @map("funcao_nome")
+  irata            Boolean
+  tipoDeslocamento TipoDeslocamento @map("tipo_deslocamento")
+  preco            Decimal          @db.Decimal(10, 2)
+  // Posições (`RelatorioDia.ordem`) dos dias em que o colaborador trabalhou.
+  diasOrdem        Int[]            @default([]) @map("dias_ordem")
+  // Refeições marcadas para o colaborador (valem em todos os dias em que trabalhou).
+  almoco           Boolean
+  jantar           Boolean
+  // Somados nos dias trabalhados.
+  normalMin        Int              @map("normal_min")
+  cemMin           Int              @map("cem_min")
+  total            Decimal          @db.Decimal(12, 2)
+
+  @@index([relatorioId])
+  @@map("relatorio_itens")
+}
+
+// E-mails de destino da Solicitação de Liberação (o porto/terminal da embarcação).
+model Destinatario {
+  id        Int      @id @default(autoincrement())
+  nome      String
+  email     String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("destinatarios")
+}
